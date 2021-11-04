@@ -1,0 +1,89 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cronjob-mongodb-script-update
+  namespace: mbr-mongodb-ptg
+data:
+  update.js: |
+    var MongoClient = require('mongodb').MongoClient;
+    var url = "mongodb://127.0.0.1:27017/";
+
+    MongoClient.connect(url, function(err, db) {
+      if (err) throw err;
+      var dbo = db.db("mydb");
+      var myquery = { address: "Valley 345" };
+      var newvalues = { $set: {name: "Mickey", address: "Canyon 123" } };
+      dbo.collection("customers").updateOne(myquery, newvalues, function(err, res) {
+        if (err) throw err;
+        console.log("1 document updated");
+        db.close();
+      });
+    });
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cronjob-mongodb-env
+  namespace: mbr-mongodb-ptg
+data:
+  scriptPath: "/tmp/update.js"
+  hostname: "mongodb-ptg-0.mongodb-svc.mbr-mongodb-ptg"
+  password: "password"
+  username: "username"
+  protocol: "mongodb"
+  port: "27017"
+  hostname2: "mongodb-ptg-1.mongodb-svc.mbr-mongodb-ptg"
+  port2: "27017"
+  hostname3: "mongodb-ptg-2.mongodb-svc.mbr-mongodb-ptg"
+  port3: "27017"
+  query3: "/catalyst?replicaSet=mongodb-ptg&authMechanism=SCRAM-SHA-256&authSource=admin"
+---
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: cronjob-mongodb-script-update
+  namespace: mbr-mongodb-ptg
+spec:
+  concurrencyPolicy: Forbid
+  # schedule: "00 22 * * *" # GMT ?
+  schedule: "55 11 * * *" # UTC ?
+  # schedule: "0/1 * * * *" # Run every minute for debugging
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    metadata:
+      creationTimestamp: null
+    spec:
+      backoffLimit: 0
+      template:
+        metadata:
+          creationTimestamp: null
+        spec:
+          restartPolicy: OnFailure
+          activeDeadlineSeconds: 500
+          containers:
+          - name: cronjob-mongodb-script-update
+            envFrom:
+            - configMapRef:
+                name: cronjob-mongodb-env
+            command: ["/bin/bash","-c"]
+            args: 
+            - |
+              #!/bin/bash
+              /usr/bin/mongo "$protocol://$username:$password@$hostname:$port$query,$hostname2:$port2$query2,$hostname3:$port3 $scriptPath" | tee /tmp/$(date '+%Y-%m-%d_%H%M%S')_$hostname.txt ; sleep infinity;
+            image: mongo
+            imagePullPolicy: Always
+            volumeMounts:
+            - name: cronjob-mongodb-script-update
+              mountPath: /tmp/update.js
+              subPath: update.js
+          volumes:
+          - name: cronjob-mongodb-script-update
+            configMap:
+              name: cronjob-mongodb-script-update
+              defaultMode: 0644
+          - name: cronjob-mongodb-env
+            configMap:
+              name: cronjob-mongodb-env
+  successfulJobsHistoryLimit: 5
+  suspend: false
