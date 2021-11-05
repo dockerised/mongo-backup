@@ -3,29 +3,17 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: cronjob-mongodb-script-update
-  namespace: mbr-mongodb-ptg
+  # namespace: mbr-mongodb-ptg
 data:
   update.js: |
-    var MongoClient = require('mongodb').MongoClient;
-    var url = "mongodb://127.0.0.1:27017/";
-
-    MongoClient.connect(url, function(err, db) {
-      if (err) throw err;
-      var dbo = db.db("mydb");
-      var myquery = { address: "Valley 345" };
-      var newvalues = { $set: {name: "Mickey", address: "Canyon 123" } };
-      dbo.collection("customers").updateOne(myquery, newvalues, function(err, res) {
-        if (err) throw err;
-        console.log("1 document updated");
-        db.close();
-      });
-    });
+    printjson( param1 + param2 );
+    
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: cronjob-mongodb-env
-  namespace: mbr-mongodb-ptg
+  # namespace: mbr-mongodb-ptg
 data:
   scriptPath: "/tmp/update.js"
   hostname: "mongodb-ptg-0.mongodb-svc.mbr-mongodb-ptg"
@@ -43,12 +31,12 @@ apiVersion: batch/v1beta1
 kind: CronJob
 metadata:
   name: cronjob-mongodb-script-update
-  namespace: mbr-mongodb-ptg
+  # namespace: mbr-mongodb-ptg
 spec:
   concurrencyPolicy: Forbid
   # schedule: "00 22 * * *" # GMT ?
-  schedule: "55 11 * * *" # UTC ?
-  # schedule: "0/1 * * * *" # Run every minute for debugging
+  # schedule: "55 11 * * *" # UTC ?
+  schedule: "0/1 * * * *" # Run every minute for debugging
   failedJobsHistoryLimit: 5
   jobTemplate:
     metadata:
@@ -70,7 +58,9 @@ spec:
             args: 
             - |
               #!/bin/bash
-              /usr/bin/mongo "$protocol://$username:$password@$hostname:$port$query,$hostname2:$port2$query2,$hostname3:$port3 $scriptPath" | tee /tmp/$(date '+%Y-%m-%d_%H%M%S')_$hostname.txt ; sleep infinity;
+              /usr/bin/mongo "$protocol://$username:$password@$hostname:$port$query,$hostname2:$port2$query2,$hostname3:$port3" --eval 'var param1=7, param2=8' $scriptPath | tee /tmp/$(date '+%Y-%m-%d_%H%M%S')_$hostname.txt ; sleep infinity;
+            # command: ["/bin/sh","-c"]
+            # args: ["sleep 100000"]
             image: mongo
             imagePullPolicy: Always
             volumeMounts:
