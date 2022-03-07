@@ -66,7 +66,7 @@ spec:
         spec:
           restartPolicy: OnFailure
           activeDeadlineSeconds: 500
-          containers:
+          initContainers:
           - name: cronjob-mongodb-script-update
             envFrom:
             - configMapRef:
@@ -78,14 +78,37 @@ spec:
             - |
               #!/bin/bash
               /usr/bin/mongo "$protocol://$username:$password@$hostname:$port$query,$hostname2:$port2$query2,$hostname3:$port3" --eval 'var param1=7, param2=8' $scriptPath | tee /mnt/logs/$(date '+%Y-%m-%d_%H%M%S')_$hostname.txt ;
-            # command: ["/bin/sh","-c"]
-            # args: ["sleep 100000"]
             image: mongo
             imagePullPolicy: Always
             volumeMounts:
             - name: cronjob-mongodb-script-update
               mountPath: /tmp/update.js
               subPath: update.js
+            - name: pvc
+              mountPath: /mnt/logs
+          containers:
+          - name: cronjob-mongodb-s3-cp
+            env:
+            - name: "AWS_S3_PROFILE"
+              value: "default"
+            - name: "AWS_S3_BUCKET"
+              value: "default"
+            - name: "AWS_SSM_KEY_ID"
+              value: "default"
+            - name: "AWS_ACCESS_KEY_ID"
+              value: "ABCREPLACEMEABC"
+            - name: "AWS_SECRET_ACCESS_KEY"
+              value: "ENTER_HERE"
+            command: ["/bin/bash","-c"]
+            args: 
+            - |
+              #!/bin/bash
+              aws s3 cp /mnt/logs/ s3://ato-mbr-$(AWS_S3_BUCKET)-etcd-backups --recursive
+              rm -rf /mnt/logs/*.txt
+              aws ssm put-parameter --name '/ato/mbr/$(AWS_S3_BUCKET)/etcd-encryptionkeys' --value file://encryption.json --type SecureString --key-id $(AWS_SSM_KEY_ID) --overwrite --debug
+            image: amazon/aws-cli
+            imagePullPolicy: Always
+            volumeMounts:
             - name: pvc
               mountPath: /mnt/logs
           volumes:
